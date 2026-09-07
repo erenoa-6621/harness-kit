@@ -74,8 +74,18 @@ declare -A BASELINE   # スイートごとの素の判定（緑でなければ�
 # 出力も取る（どれだけのアサーションが落ちたかを測るため）。
 # ⚠ **コマンド置換 `$(run_suite …)` で呼んではいけない。** 置換は副シェルなので変数の代入が親に届かない。
 #   → 戻り値も**グローバル変数**で返す。
+# ── 外の環境を写しに持ち込まない ──
+#   実測: 呼び出し元の HARNESS_CONF が指す STATE_DIR に直前の verify.sh が書いた結果ファイルが残っていると、
+#   「スイートの conf 固定行を消す」変異が**その結果ファイルの中身次第で**殺されたり殺されなかったりした
+#   （verify.sh を連続で回すと緑と赤が交互に出た）。判定が外部状態に依存する＝fail-open の型。
+#   → 写しの中では HARNESS_CONF・STATE_DIR 系の環境変数を落とし、写しの中の一時 STATE_DIR を指す設定で回す。
+#     写しごとに空の STATE_DIR から始まるので、外に何が残っていても判定は変わらない。
+SBX_STATE="$SBX/.sandbox_state"; mkdir -p "$SBX_STATE/loops"
+SBX_CONF="$SBX/.sandbox.conf"
+printf 'STATE_DIR="%s"\nLOOP_STATE_DIR="%s/loops"\n' "$SBX_STATE" "$SBX_STATE" > "$SBX_CONF"
+SBX_ENV=(env -u HARNESS_CONF -u STATE_DIR -u LOOP_STATE_DIR -u VERIFY_WATCH_DIRS -u CLAUDE_PROJECT_DIR HARNESS_CONF="$SBX_CONF")
 SUITE_OUT=""; SUITE_RC=0
-run_suite() { SUITE_OUT="$( (cd "$ROOT" && bash "$ROOT/$1" 2>&1) )"; SUITE_RC=$?; }
+run_suite() { SUITE_OUT="$( (cd "$ROOT" && "${SBX_ENV[@]}" bash "$ROOT/$1" 2>&1) )"; SUITE_RC=$?; }
 
 # 全殺しは「スイートが全く死んでいない」ことしか証明しない。全殺しだけの登録は素通りと同じ。
 # → **広い/局所を自己申告させない。落ちたアサーションの割合で機械が測る。**

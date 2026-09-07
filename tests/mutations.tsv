@@ -54,3 +54,4 @@ tests/run_harness_contract.sh	tests/run_harness_contract.sh	/^export HARNESS_CON
 tests/run_pii_check.sh	tools/pii_check.sh	s|^if \[ "\$hits" -gt 0 \]; then exit 1; fi|if [ "$hits" -gt 99999 ]; then exit 1; fi|	PII が見つかっても赤にしない（fail-open）
 tests/run_pii_check.sh	tools/pii_check.sh	s/s\/<\[\^<>@\]\*>\/\/g/s|<[^<>]*>||g/	名義形 名前 <実メール> を再び見逃す
 tests/run_audit_credentials.sh	tools/audit_credentials.sh	s/in 00\) ;; \*\) echo/in *) ;; 99) echo/	他人から読めるファイルを1件も報告しない（fail-open）
+tests/run_mutation_check.sh	tools/mutation_check.sh	s/^SBX_ENV=\(env .*\)$/SBX_ENV=(env)/	写しへ外の環境変数を持ち込む（変異の生死が外の結果ファイル次第になる）

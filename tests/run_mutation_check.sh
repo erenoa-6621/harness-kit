@@ -140,6 +140,32 @@ wait "$mcpid" 2>/dev/null
 [ "$changed" -eq 0 ] && ok "実行中も対象ファイルが一度も変わらない" \
   || ng "実行中に対象が書き換わった＝別セッションが壊れた最中を掴みうる"
 
+# 8. **外の環境を写しに持ち込まない**（判定が外部状態に依存する fail-open の型）。
+#    実測: 呼び出し元の HARNESS_CONF が指す STATE_DIR に直前の verify.sh の結果ファイルが残っていると、
+#    「conf 固定行を消す」変異が**その結果ファイルの中身次第で**殺されたり殺されなかったりした（緑と赤が交互に出た）。
+#    → 写しの中では HARNESS_CONF・STATE_DIR 系の環境変数を落とし、写しの中の一時 STATE_DIR を指す設定で回す。
+#    検体: 外の値が見えたら落ちるスイートを置き、外の環境を汚した状態で変異検査を回して緑になることを見る。
+H="$TMP/h"; mkfake "$H" "$(printf 'tests/run_toy.sh\ttools/toy.sh\ts/DANGER/SAFE/\t検出語を1つ消す（局所）\ntests/run_env.sh\ttests/run_env.sh\ts/env_unset LOOP_STATE_DIR/env_isset LOOP_STATE_DIR/\t検体の1条件を反転する（局所）')"
+printf 'STATE_DIR="/nonexistent/outer_leak"\n' > "$TMP/outer.conf"
+cat > "$H/tests/run_env.sh" <<'T'
+#!/usr/bin/env bash
+# 外の環境が写しの中に持ち込まれていないことを見る検体（4条件。1条件だけ落とす変異が局所になる）
+pass=0; fail=0
+chk(){ if eval "$2"; then pass=$((pass+1)); else fail=$((fail+1)); echo "  NG $1"; fi; }
+env_unset(){ [ -z "${!1:-}" ]; }
+env_isset(){ [ -n "${!1:-}" ]; }
+chk "HARNESS_CONF が外の値のままでない"          '[ "${HARNESS_CONF:-}" != "__OUTER__" ]'
+chk "STATE_DIR が環境から落ちている"             'env_unset STATE_DIR'
+chk "LOOP_STATE_DIR が環境から落ちている"        'env_unset LOOP_STATE_DIR'
+chk "設定の STATE_DIR が実在する一時ディレクトリ" '. "${HARNESS_CONF:-/dev/null}" 2>/dev/null; [ -n "${STATE_DIR:-}" ] && [ -d "$STATE_DIR" ] && [ "$STATE_DIR" != "/nonexistent/outer_leak" ]'
+if [ "$fail" -eq 0 ]; then echo "== env pass=$pass fail=0 =="; exit 0; fi
+echo "== 赤 env pass=$pass fail=$fail =="; exit 1
+T
+sed -i "s|__OUTER__|$TMP/outer.conf|" "$H/tests/run_env.sh"; chmod +x "$H/tests/run_env.sh"
+out=$(HARNESS_CONF="$TMP/outer.conf" STATE_DIR=/nonexistent/outer_leak LOOP_STATE_DIR=/nonexistent/outer_leak bash "$H/tools/mutation_check.sh" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && ok "外の HARNESS_CONF・STATE_DIR 系の環境変数を写しに持ち込まない（判定が外部状態に依存しない）" \
+  || ng "外の環境が写しの中に漏れた（exit=$rc）＝変異の生死が外の結果ファイル次第になる: $(printf '%s' "$out" | grep -E 'NG|⏭' | head -3 | tr '\n' ' ')"
+
 echo "-----"
 if [ "$fail" -eq 0 ]; then echo "== 変異検査器の回帰スイート pass=$pass fail=0 =="; exit 0
 else echo "== 赤 変異検査器の回帰スイート pass=$pass fail=$fail =="; exit 1; fi
