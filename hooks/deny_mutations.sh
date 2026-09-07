@@ -30,6 +30,7 @@
 #     起動先が自作スクリプトや `python3 script.py`（中身を静的に読めない→warn を出して通す）／
 #     `bash -c "$VAR"`・`eval "$VAR"`・`find … -exec 自作スクリプト`（同じく静的に読めない→warn を出して通す）／
 #     `shell=True` で一時領域だけを触る変更系（シェル判定と同じく通る。argv リストで書くと止まる非対称がある）。
+#     **二重引用符の中のコマンド置換**（`echo "$(rm -rf x)"`・`echo "`rm -rf x`"`）。① が引用リテラルを目印に潰すので中身が判定に掛からない（引用符なしの `$(…)` は止まる。tests/run_hooks.sh P 節）。
 #
 # 対象の役は harness.conf の READONLY_AGENTS（空白区切りの agent_type）。
 # 停止スイッチ: このファイルを rm するか、settings.json の該当行を消す。

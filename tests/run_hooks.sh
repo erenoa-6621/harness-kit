@@ -347,6 +347,12 @@ run "$DENY" kensho "sed -i '/^x/d' /tmp/claude-1000/x/a tests/mutations.tsv" 2 "
 run "$DENY" kensho "grep 'find . -delete' README.md"                      0 "O の対: 引用符の中の find -delete はデータ"
 run "$DENY" kensho "grep -rn 'rm -rf' src/ | sort | head"                 0 "O の対: 引用符の中の rm と -o の無い sort"
 
+# P. **既知の穴（現状の挙動を固定する検体）**。独立検証（第2ラウンド）で見つかり、未修正のまま。
+#    二重引用符の中のコマンド置換は、① が引用リテラルを目印（QLIT）に潰すので中身が判定に掛からない。
+#    引用符なしの `echo $(rm …)` は K の対で止まる（上）。この非対称を記録する。
+#    ⚠ 既知の穴。塞いだらこの検体の期待値を 2 に変える。
+run "$DENY" kensho "echo \"\$(rm -rf $REPO/x)\"" 0 "P: 既知の穴。二重引用符の中のコマンド置換は現状通る（塞いだら期待値を 2 に変える）"
+
 # F. 対象外の役は素通り（ゲートを足すとき、対象でない者に何が起きるかを必ず試す）
 run "$DENY" shukko "git commit -m x"              0 "対象外: 書く役は通る"
 run "$DENY" ""     "git commit -m x"              0 "対象外: 主セッション（ここが赤だと全部が動かない）"
