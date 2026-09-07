@@ -1,0 +1,50 @@
+# 変異台帳 — 「その検査は、対象を壊したら赤くなるか」を機械で確かめるための登録簿。走らせるのは tools/mutation_check.sh。
+#
+# なぜ台帳にするのか:
+#   **検査が緑であることは、検査が働いていることの証明ではない。** 何も見ていなくても緑は出る。
+#   規律を文章で書いても守られないので、「変異を1つも登録していないスイートを赤にする」門にした（突き合わせは verify.sh）。
+#
+# 列: スイート <TAB> 変異対象 <TAB> sed -E 式 <TAB> 説明
+#   ・式は `sed -i -E` にそのまま渡す。削除は '/pat/d'、置換は 's|a|b|'。
+#   ・**空振り（対象が1バイトも変わらない）は赤にする。** 変異したつもりの飾りを許さない。
+#   ・変異前に赤いスイートは「判定不能」で赤にする。赤に赤を撃っても通ってしまうため。
+#   ・**各スイートに「局所」（落ちるアサーションが半分未満）の変異を最低1件置く。** 全殺しだけでは「死んでいない」しか言えない。
+#     広い/局所は自己申告ではなく、mutation_check.sh が pass=/fail= を読んで機械が分類する。
+#
+# ⚠ この台帳が緑でも「この検査はあらゆる欠陥を捕まえる」とは言わない。登録した壊し方しか見ていない。
+#
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/'chmod','chown'/'chown'/	変更系コマンドから chmod だけを落とす（局所）
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/^        for name in CMDS:/        for name in []:/	変更系コマンドの検出そのものを殺す（fail-open・全殺し）
+tests/run_hooks.sh	hooks/deny_mutations.sh	s|"\^w\\s\+\\S"|"NEVER_MATCH_W"|	sed の w（コマンド位置）の検出を殺す
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/and _all_tmp\(_inplace_targets\(seg\)\)//	sed -i の書き先を見なくする（一時領域の写しまで止まる＝過検知の側）
+tests/run_hooks.sh	hooks/deny_mutations.sh	/^shell_text = _MKTEMP_SUB_RE.sub/d	mktemp のコマンド置換の展開を消す（過検知が戻る）
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/^            if cmdname == "chmod" and _MODE_RE.match\(t\):/            if False:/	chmod のモード語の除外を消す（過検知が戻る）
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/^  case " \$READONLY_AGENTS " in/  case " chosa kansa kensho hisho eigyo " in/	役名の一覧を決め打ちに戻す（harness.conf を読まなくなる）
+tests/run_hooks.sh	hooks/check_git_identity.sh	s/            if v != want:/            if False:/	名義の不一致を止めなくする
+tests/run_gate_check.sh	tools/gate_vocab.conf	s/\|release\|/|reIease|/	公開語から release だけを落とす（gh workflow run release.yml が素通りする）
+tests/run_gate_check.sh	tools/gate_check.sh	/① 検査が緑であること/d	裁量の条件①を出力から落とす（許可だけが残る）
+tests/run_gate_check.sh	tools/gate_check.sh	s/バックアップと戻し方を残すこと/（条件なし）/	cron の追加条件だけを落とす
+tests/run_gate_check.sh	tools/gate_check.sh	s|^  echo "🟢 裁量: 配線|  verdict "配線|	配線の変更を人間ゲート側へ戻す（人が許可した行為を機械が止める）
+tests/run_gate_check.sh	tools/gate_check.sh	s|C\.UTF-8 C\.utf8|zz1 zz2|	ロケール探索を殺す（素の環境で判定不能になり、環境比較が赤になる）
+tests/run_gate_check.sh	tools/gate_vocab.conf	s|\[\^。\]|.|g	句点の境界を外す（「本番を調べて内部文書に反映する」を人間ゲートへ倒す過検知が戻る）
+tests/run_gate_check.sh	tools/gate_check.sh	s/^  echo "🟢 裁量: 公開済み資産の内容更新"/  exit 2/	公開済み資産の内容更新を判定不能へ戻す
+tests/run_gate_check.sh	tools/gate_check.sh	s|可視性そのものの変更（公開/非公開の切り替え）|（無害）|	可視性変更の境界の判定理由を消す（内容更新に化ける）
+tests/run_stop_hook.sh	hooks/unfinished_vocab.txt	/^回させます$/d	宣言語から「回させます」だけを落とす（語彙ファイルが読まれていることの証明）
+tests/run_stop_hook.sh	hooks/unfinished_action.py	s/if age > 12 \* 3600:/if False:/	古い緑を成果物の検証と認めてしまう
+tests/run_stop_hook.sh	hooks/unfinished_action.py	s/skip_declared = bool\(re.search/skip_declared = False and bool(re.search/	逃げ道を塞ぐ（門が摩耗して外される）
+tests/run_stop_hook.sh	hooks/unfinished_action.py	s/^    if not hits and not state_reason and not artifact_reason:/    if True:/	Stop フックが常に「何も無い」と判定する（全殺し）
+tests/run_loop_guard.sh	tools/loop_guard.sh	s/^    if \[ -f "\$F" \]; then exit 0; fi/    exit 0/	停止スイッチを無効化（rm しても止まらない）
+tests/run_loop_guard.sh	tools/loop_guard.sh	s/if \[ "\$n" -ge "\$MAX_FAILS" \]; then/if false; then/	連続失敗の上限を殺す（収束しないループが回り続ける）
+tests/run_loop_guard.sh	tools/loop_guard.sh	/^\[ -f "\$CONF" \] && \. "\$CONF"$/d	harness.conf を読まなくする（LOOP_STATE_DIR が既定に戻り、人が消すべきファイルの場所が変わる）
+tests/run_mutation_check.sh	tools/mutation_check.sh	s/^  if \[ "\$before" = "\$after" \]; then/  if false; then/	空振り検知を殺す（台帳が飾りになる）
+tests/run_mutation_check.sh	tools/mutation_check.sh	s|^  if \[ "\$\{BASELINE\[\$suite\]\}" != "0" \]; then|  if false; then|	「変異前から赤」の判定を殺す（赤に赤を撃って通す）
+tests/run_mutation_check.sh	tools/mutation_check.sh	s/最終行に改行が無い/最終行に改行なし/	最終行の警告文言だけを変える
+tests/run_check_levels.sh	tools/check_levels.tsv	s/^run_hooks.sh\tALWAYS_PASSES/run_hooks.sh\tSOMETIMES/	水準の値を想定外にする
+tests/run_check_levels.sh	tools/check_levels.tsv	/^run_gate_check.sh\t/d	スイートを台帳から落とす（登録漏れ）
+tests/run_check_levels.sh	tools/check_levels.tsv	s/^(run_stop_hook.sh\tALWAYS_PASSES\t-\t).*/\1/	根拠欄を空にする
+tests/run_harness_contract.sh	settings.json.example	s|\$\{CLAUDE_PROJECT_DIR\}/hooks/deny_mutations.sh|$HOME/x/hooks/deny_mutations.sh|	フックの command に $HOME の fallback を戻す
+tests/run_harness_contract.sh	hooks/unfinished_action.py	s/^    sys.stdout.write\(json.dumps\(\{"decision": "block", "reason": reason\},/    sys.stdout.write("{}\\n"); sys.stdout.write(json.dumps({"decision": "block", "reason": reason},/	Stop フックが JSON を2行出す（契約違反の再現）
+tests/run_harness_contract.sh	hooks/deny_mutations.sh	s/^  exit 2$/  exit 0/	止めるときの exit 2 を 0 にする（理由だけ出して通す）
+tests/run_pii_check.sh	tools/pii_check.sh	s|^if \[ "\$hits" -gt 0 \]; then exit 1; fi|if [ "$hits" -gt 99999 ]; then exit 1; fi|	PII が見つかっても赤にしない（fail-open）
+tests/run_pii_check.sh	tools/pii_check.sh	s/s\/<\[\^<>@\]\*>\/\/g/s|<[^<>]*>||g/	名義形 名前 <実メール> を再び見逃す
+tests/run_audit_credentials.sh	tools/audit_credentials.sh	s/in 00\) ;; \*\) echo/in *) ;; 99) echo/	他人から読めるファイルを1件も報告しない（fail-open）

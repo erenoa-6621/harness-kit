@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# pre-commit — コミット名義が期待値と一致しないコミットを止める（git 側の門）。
+#
+# なぜ PreToolUse フックと別に要るのか:
+#   hooks/check_git_identity.sh は **Bash ツールに渡されたコマンド文字列しか見ない。**
+#   cron が実行するスクリプトや、テストスクリプトのファイル内に書かれた `git -c user.email=... commit` は素通りする。
+#   **フックが守れるかどうかは「そのコマンド文字列がどこに書かれているか」に依存する。**
+#   git の pre-commit は commit の経路そのものに入るので、呼び出し元がどこでも効く。
+#
+# 期待する名義は harness.conf の GIT_NAME_EXPECTED / GIT_EMAIL_EXPECTED（未設定なら止まる）。
+#
+# 有効化（clone しただけでは効かない。リポジトリごとに1回必要）:
+#   git config core.hooksPath .githooks
+#
+# 試し方（`git commit` を経由しないこと。経由すると PreToolUse に先に止められる）:
+#   GIT_AUTHOR_NAME=BAD GIT_AUTHOR_EMAIL=b@x bash .githooks/pre-commit   # → exit 1
+#   bash .githooks/pre-commit                                            # → 名義が期待値どおりなら exit 0
+set -uo pipefail
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+CONF="${HARNESS_CONF:-$ROOT/harness.conf}"
+GIT_NAME_EXPECTED=""; GIT_EMAIL_EXPECTED=""
+[ -f "$CONF" ] && . "$CONF"
+WANT_NAME="$GIT_NAME_EXPECTED"
+WANT_MAIL="$GIT_EMAIL_EXPECTED"
+
+if [ -z "$WANT_NAME" ] || [ -z "$WANT_MAIL" ]; then
+  echo "🚫 harness.conf の GIT_NAME_EXPECTED / GIT_EMAIL_EXPECTED が未設定なので名義を判定できません。" >&2
+  echo "   設定するか、この pre-commit を外してください（黙って通しません）。" >&2
+  exit 1
+fi
+
+an=$(git var GIT_AUTHOR_IDENT    | sed -E 's/^(.*) <.*/\1/')
+ae=$(git var GIT_AUTHOR_IDENT    | sed -E 's/^.*<([^>]*)>.*/\1/')
+cn=$(git var GIT_COMMITTER_IDENT | sed -E 's/^(.*) <.*/\1/')
+ce=$(git var GIT_COMMITTER_IDENT | sed -E 's/^.*<([^>]*)>.*/\1/')
+
+fail=0
+for pair in "author|$an|$ae" "committer|$cn|$ce"; do
+  role="${pair%%|*}"; rest="${pair#*|}"; nm="${rest%%|*}"; ml="${rest#*|}"
+  if [ "$nm" != "$WANT_NAME" ] || [ "$ml" != "$WANT_MAIL" ]; then
+    echo "🚫 コミット名義が期待値と一致しません（$role）: $nm <$ml>" >&2
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  echo "   期待する名義は  $WANT_NAME <$WANT_MAIL>（harness.conf）" >&2
+  echo "   コミット履歴の名義は**あとから取り消せません**。個人メールが載ると永久に残ります。" >&2
+  echo "   直し方: -c での上書きを外す（global 設定を期待値にそろえる）" >&2
+  echo "   正当な理由がある場合のみ: ALLOW_IDENTITY_OVERRIDE=1 を付ける（理由を記録すること）" >&2
+  if [ "${ALLOW_IDENTITY_OVERRIDE:-0}" != "1" ]; then
+    exit 1
+  fi
+  echo "   ⚠ ALLOW_IDENTITY_OVERRIDE=1 により続行します" >&2
+fi
+exit 0

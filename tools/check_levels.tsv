@@ -1,0 +1,24 @@
+# 検査の3値台帳
+#
+# 検査を緑/赤の二値で持つと「たまに落ちる検査」の置き場が無く、落ちる検査は消されるか無視される。
+# だから水準を3つに分け、落ちることを承知で置く検査には期限を持たせる（期限切れは赤）。
+#
+# 値の意味:
+#   ALWAYS_PASSES  … 常に緑であるべき。赤なら即座に直す
+#   USUALLY_PASSES … 通常は緑だが、環境や他プロセスの都合で落ちうる。赤でも作業は続けてよいが記録する
+#   USUALLY_FAILS  … いまは落ちる。落ちていることを承知で置いてある。期限（YYYY-MM-DD）までに緑へ動くか。
+#                    動かないなら検査ではなく願望なので消す
+#
+# 列: 検査名 <TAB> 水準 <TAB> 期限(USUALLY_FAILS のみ・YYYY-MM-DD。それ以外は -) <TAB> 根拠（なぜその水準か）
+# tests/run_*.sh は全件ここに載っていなければならない（run_check_levels.sh が突き合わせる）。
+#
+run_hooks.sh	ALWAYS_PASSES	-	阻止層の回帰。過検知と素通りの両方を対で持つ
+run_gate_check.sh	ALWAYS_PASSES	-	人間ゲート判定の回帰。通常環境と素の環境の両方で撃つ
+run_stop_hook.sh	ALWAYS_PASSES	-	Stop フックの回帰。過検知の検体を含む
+run_loop_guard.sh	ALWAYS_PASSES	-	ループ停止スイッチ。裁量の条件②（人間が即時停止できる経路）を供給する唯一の道具
+run_mutation_check.sh	ALWAYS_PASSES	-	変異検査器そのものの回帰。ここが fail-open すると全検査の信用が同時に消える
+run_check_levels.sh	ALWAYS_PASSES	-	この台帳の健全性。期限の無い USUALLY_FAILS と登録漏れを赤にする
+run_harness_contract.sh	ALWAYS_PASSES	-	settings.json.example の配線とフックの入出力契約。無出力が正常の顔をする経路を人工的に撃つ
+run_pii_check.sh	ALWAYS_PASSES	-	PII 検査の回帰。判定不能を黙って緑にしないことまで固定する
+run_audit_credentials.sh	ALWAYS_PASSES	-	資格情報監査の回帰。値を出さず、かつ見逃さない
+mutation_check	ALWAYS_PASSES	-	登録した変異で検査が赤になること
