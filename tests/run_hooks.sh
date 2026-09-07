@@ -352,6 +352,7 @@ run "$DENY" kensho "grep -rn 'rm -rf' src/ | sort | head"                 0 "O �
 #    引用符なしの `echo $(rm …)` は K の対で止まる（上）。この非対称を記録する。
 #    ⚠ 既知の穴。塞いだらこの検体の期待値を 2 に変える。
 run "$DENY" kensho "echo \"\$(rm -rf $REPO/x)\"" 0 "P: 既知の穴。二重引用符の中のコマンド置換は現状通る（塞いだら期待値を 2 に変える）"
+run "$DENY" kensho "\$(echo rm) -rf $REPO/x" 0 "P: 既知の穴。コマンド置換でコマンド名を作る形は現状通る（塞いだら期待値を 2 に変える）"
 
 # F. 対象外の役は素通り（ゲートを足すとき、対象でない者に何が起きるかを必ず試す）
 run "$DENY" shukko "git commit -m x"              0 "対象外: 書く役は通る"
