@@ -2,7 +2,7 @@
 
 Claude Code（および同種のエージェント運用）で踏んだ不具合から起こした「門」の集まりです。
 自分たちの AI 運用で実際に起きた失敗を、注意力や文章のルールではなく、機械が止める・機械が答える形に落としたものを、
-社内固有の名前や数値を外して切り出しました。全部 bash と python3 で、依存はそれだけです。
+社内固有の名前や数値を外して切り出しました。必要なものは bash・python3（3.8 以上）・GNU sed・git です。
 
 - 門（機械が止める）: PreToolUse フック2本・Stop フック1本・git pre-commit
 - 判定（機械が答える）: 人間ゲート判定・ループ停止スイッチ
@@ -28,8 +28,9 @@ Claude Code（および同種のエージェント運用）で踏んだ不具合
 
 ### 型2: 助言型は効かない ── 文章で書いて満足する癖
 
-規則を「案内1行」に落としたものは開かれず、推薦フックの追従率は数%でした。文脈ファイルの指示は守られても、成功率は変わらずコストだけ増えるという報告もあります。
-止める門だけが効きました。「書いたから守られる」は成立していません。
+規則を「案内1行」に落としたものは開かれず、推薦フックの追従率は数%だったという計測があります（出典: https://zenn.dev/activecore/articles/claude-code-resident-cost 、2026-09-03 取得）。
+文脈ファイルの指示は守られても、成功率に有意差は無くコストだけ増えるという研究もあります（出典: https://arxiv.org/abs/2602.11988 、2026-09-03 取得）。
+自分たちの運用でも、止める門だけが効きました。「書いたから守られる」は成立していません。
 
 対策の原則: ルールは3つに分類して置き場所を変える。①門（機械が止める）＝フック・検査スクリプトへ。②判定（機械が答える）＝`gate_check.sh` 型へ。③記録（人が読む）＝文書へ。
 文脈ファイルに残すのは①②の入口と、起動に要る最小限だけ。
@@ -39,7 +40,7 @@ Claude Code（および同種のエージェント運用）で踏んだ不具合
 緑/赤の二値しか無いと、「たまに落ちる検査」を置く場所が無く、落ちる検査は消されるか無視されます。
 Stop フックが1日十数回鳴れば、二値のままでは「うるさいから外す」に着地します。
 
-対策の原則: 検査は `ALWAYS_PASSES / USUALLY_PASSES / USUALLY_FAILS` の3値で持ち、落ちることを承知で置く検査には期限を付ける（`tools/check_levels.tsv`）。
+対策の原則（Gemini CLI の release-confidence / behavioral-evals の考え方を借りています。出典: https://github.com/google-gemini/gemini-cli の release-confidence.md（docs 配下）、2026-09-03 取得）: 検査は `ALWAYS_PASSES / USUALLY_PASSES / USUALLY_FAILS` の3値で持ち、落ちることを承知で置く検査には期限を付ける（`tools/check_levels.tsv`）。
 新しい検査を「必ず通る」から始めない。門には逃げ道を1つ刻む（`skip verify（理由）`）。逃げ道の無い門は摩耗して外されます。
 
 ### 型4: 孫引きを根拠にする
@@ -58,11 +59,11 @@ Stop フックが1日十数回鳴れば、二値のままでは「うるさい�
 
 ## 各部品
 
-停止スイッチはすべて `rm` 1発（フックのファイルを消すか、`settings.json` の該当行を消す）です。
+停止スイッチは原則 `rm` 1発（フックのファイルを消すか、`settings.json` の該当行を消す）です。例外は `.githooks/pre-commit` で、こちらは `git config --unset core.hooksPath` で外します。
 
 | 部品 | 何を止める／答えるか | 止め方 |
 |---|---|---|
-| `hooks/deny_mutations.sh` | 読み取り専用の役（`harness.conf` の `READONLY_AGENTS`）が Bash で行う変更操作（リダイレクト・rm/mv/mkdir…・`sed -i`・git/gh の変更系・python/node 経由の書き込み・subprocess 経由の変更系）を exit 2 で止める。一時領域（`/tmp/` `$TMPDIR`）への書き込みは通す。主セッション（agent_type 無し）は対象外 | `rm hooks/deny_mutations.sh` |
+| `hooks/deny_mutations.sh` | 読み取り専用の役（`harness.conf` の `READONLY_AGENTS`）が Bash で行う変更操作（リダイレクト・rm/mv/mkdir/rsync…・`sed -i`・`sort -o`・`patch`・`find -delete/-exec`・`bash -c "…"`/`eval "…"` の中身・git/gh の変更系・python/node 経由の書き込み・subprocess 経由の変更系）を exit 2 で止める。一時領域（`/tmp/` `$TMPDIR`）への書き込みは通す。主セッション（agent_type 無し）は対象外 | `rm hooks/deny_mutations.sh` |
 | `hooks/check_git_identity.sh` | コミット名義が `harness.conf` の `GIT_NAME_EXPECTED` / `GIT_EMAIL_EXPECTED` と一致しない上書き（`-c user.email=` や環境変数）を含む `git commit` を止める。期待値が未設定なら判定できないので止める | `rm hooks/check_git_identity.sh` |
 | `.githooks/pre-commit` | 同じ名義検査を git の経路で行う（cron やスクリプト内の git はフックの文字列検査に現れないため）。`git config core.hooksPath .githooks` で有効化 | `git config --unset core.hooksPath` |
 | `hooks/unfinished_action.py` | Stop フック。最終メッセージが「〜します」等の一人称の行動宣言で終わっているとき、一度だけ差し戻す。加えて `verify.sh` の結果が赤／12時間より古いまま止まろうとしたら一度だけ差し戻す。語彙は `hooks/unfinished_vocab.txt`。逃げ道は `skip verify（理由）` | `rm hooks/unfinished_action.py` |
@@ -78,12 +79,13 @@ Stop フックが1日十数回鳴れば、二値のままでは「うるさい�
 
 ## 導入手順
 
-1. キットの中身をプロジェクト直下に置く（`hooks/ tools/ tests/ harness/ .githooks/ harness.conf settings.json.example verify.sh`）。
+1. キットの中身をプロジェクト直下に置く（`hooks/ tools/ tests/ harness/ .githooks/ harness.conf.example settings.json.example verify.sh`）。
    サブディレクトリに置く場合は `settings.json` のパスをそれに合わせる。
-2. `harness.conf` を書く。
+2. `cp harness.conf.example harness.conf` して編集する（`harness.conf` は `.gitignore` 済みで追跡しない）。
+   `harness.conf` が無いときフックは fail-closed で、読み取り専用の役の Bash と名義を上書きするコミットは止まる（黙って通さない）。
 
    ```
-   READONLY_AGENTS="chosa kansa kensho hisho eigyo"   # 読み取り専用の役名（agent_type）
+   READONLY_AGENTS="chosa kansa kensho hisho eigyo"   # 読み取り専用の役名（agent_type）。この5つは例
    GIT_NAME_EXPECTED="Your Name"
    GIT_EMAIL_EXPECTED="you@example.invalid"
    LOOP_STATE_DIR="state/loops"
@@ -121,6 +123,8 @@ Stop フックが1日十数回鳴れば、二値のままでは「うるさい�
 - 人間ゲート（人の確認が要る）: 対外送信・公開・納品・課金・不可逆な削除・本番デプロイ＝新規の対外公開、および公開の配線を「押す」こと。
 - 裁量（機械が進めてよい）: 内部の開発・検証・private への commit と PR・検証が緑の PR マージ・配線（ワークフロー/cron/CI/公開窓）の変更・公開済み資産の内容更新・運用ルールの改訂。
 
+この線引きは、ある一人会社が自分たちの運用で決めた既定値です。組織ごとに `tools/gate_vocab.conf` で語彙を変えてください。
+
 裁量には2つの条件が掛かります。欠けたら裁量に含まれません。
 
 1. 検査が緑であること
@@ -138,7 +142,7 @@ Stop フックが1日十数回鳴れば、二値のままでは「うるさい�
 
 台帳（`tests/mutations.tsv`）の規律:
 
-- 各スイートに最低1件、しかも「局所」（落ちるアサーションが半分未満）の変異を置く。全殺しだけの登録は「スイートが完全に死んでいない」ことしか証明しません。広い/局所は自己申告ではなく機械が分類します。
+- 各スイートに最低1件、しかも「局所」（落ちるアサーションが半分未満）の変異を置く。全殺しだけの登録は「スイートが全く死んでいない」ことしか証明しません。広い/局所は自己申告ではなく機械が分類します。
 - 空振り（対象が1バイトも変わらない）は赤。変異前から赤いスイートは「判定不能」で赤。
 - 変異を1つも登録していないスイートは `verify.sh` が赤にします。
 
@@ -146,7 +150,7 @@ Stop フックが1日十数回鳴れば、二値のままでは「うるさい�
 
 ## 既知の限界
 
-- どの門も denylist であって境界ではありません。`deny_mutations.sh` は既知の書き込み構文に対する決定論的なつまずき石で、`from subprocess import run`・`os.popen`・自作スクリプト経由などは通ります（ファイル冒頭に「まだ通るもの」を列挙してあります）。単独で「守れている」根拠にしないでください。
+- どの門も denylist であって境界ではありません。`deny_mutations.sh` は既知の書き込み構文に対する決定論的なつまずき石で、`from subprocess import run`・`os.popen`・自作スクリプト経由・`bash -c "$VAR"` や `find … -exec 自作スクリプト` のように中身を静的に読めないもの（警告を出して通す）などは通ります（ファイル冒頭に「まだ通るもの」を列挙してあります）。独立検証で素通りが実測された `rsync`・`find -delete`・`bash -c "…"`・`eval "…"`・`sort -o`・`patch` は塞ぎ、検体を `tests/run_hooks.sh` O 節に置きました。それでも列挙は列挙です。単独で「守れている」根拠にしないでください。
 - OS 層の隔離（sandbox・permissions.deny）は別途必要です。このキットはその代わりにはなりません。
 - `gate_check.sh` は日本語と英語の語彙に依存します。言い換えは尽きないので、未知の外向き操作は素通りしえます。
 - 過検知は安全側の失敗ではありません。検査の検体を作れなくし、測れない領域を増やします。過検知を見つけたら、通す検体と止める検体を対で足してください。
@@ -157,3 +161,5 @@ Stop フックが1日十数回鳴れば、二値のままでは「うるさい�
 MIT（`LICENSE`）。
 
 ## 問い合わせ
+
+（準備中）

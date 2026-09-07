@@ -21,6 +21,10 @@ tests/run_hooks.sh	hooks/deny_mutations.sh	/^shell_text = _MKTEMP_SUB_RE.sub/d	m
 tests/run_hooks.sh	hooks/deny_mutations.sh	s/^            if cmdname == "chmod" and _MODE_RE.match\(t\):/            if False:/	chmod のモード語の除外を消す（過検知が戻る）
 tests/run_hooks.sh	hooks/deny_mutations.sh	s/^  case " \$READONLY_AGENTS " in/  case " chosa kansa kensho hisho eigyo " in/	役名の一覧を決め打ちに戻す（harness.conf を読まなくなる）
 tests/run_hooks.sh	hooks/check_git_identity.sh	s/            if v != want:/            if False:/	名義の不一致を止めなくする
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/'rsync','sort','patch'\]/'sort','patch']/	変更系コマンドから rsync だけを落とす（独立検証で素通りが実測された経路・局所）
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/^        if _FIND_SEG_RE.match\(seg\):/        if False:/	find のセグメント判定を殺す（find -delete が再び素通りし、起点が一時領域の -exec rm は再び止まる）
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/^    hits = _shell_c_hits\(shell_text\)/    hits = []/	bash -c "…" / eval "…" の中身の判定を殺す（引用文字列の中の rm が素通りする）
+tests/run_hooks.sh	hooks/deny_mutations.sh	s/stripped.append\(" " \+ QLIT \+ " " if lit else " "\)/stripped.append(" ")/	パスでない引用リテラルを目印でなく空白に潰す（旧挙動。スクリプト部が消えて最初のファイル引数がスクリプトに数えられ、一時領域の写しへの sed -i が再び止まる＝過検知の側）
 tests/run_gate_check.sh	tools/gate_vocab.conf	s/\|release\|/|reIease|/	公開語から release だけを落とす（gh workflow run release.yml が素通りする）
 tests/run_gate_check.sh	tools/gate_check.sh	/① 検査が緑であること/d	裁量の条件①を出力から落とす（許可だけが残る）
 tests/run_gate_check.sh	tools/gate_check.sh	s/バックアップと戻し方を残すこと/（条件なし）/	cron の追加条件だけを落とす
@@ -33,6 +37,7 @@ tests/run_stop_hook.sh	hooks/unfinished_vocab.txt	/^回させます$/d	宣言語
 tests/run_stop_hook.sh	hooks/unfinished_action.py	s/if age > 12 \* 3600:/if False:/	古い緑を成果物の検証と認めてしまう
 tests/run_stop_hook.sh	hooks/unfinished_action.py	s/skip_declared = bool\(re.search/skip_declared = False and bool(re.search/	逃げ道を塞ぐ（門が摩耗して外される）
 tests/run_stop_hook.sh	hooks/unfinished_action.py	s/^    if not hits and not state_reason and not artifact_reason:/    if True:/	Stop フックが常に「何も無い」と判定する（全殺し）
+tests/run_stop_hook.sh	tests/run_stop_hook.sh	/^export HARNESS_CONF=/d	スイートの conf 固定行を消す（環境の HARNESS_CONF を拾い、結果ファイルの場所がずれて赤になる）
 tests/run_loop_guard.sh	tools/loop_guard.sh	s/^    if \[ -f "\$F" \]; then exit 0; fi/    exit 0/	停止スイッチを無効化（rm しても止まらない）
 tests/run_loop_guard.sh	tools/loop_guard.sh	s/if \[ "\$n" -ge "\$MAX_FAILS" \]; then/if false; then/	連続失敗の上限を殺す（収束しないループが回り続ける）
 tests/run_loop_guard.sh	tools/loop_guard.sh	/^\[ -f "\$CONF" \] && \. "\$CONF"$/d	harness.conf を読まなくする（LOOP_STATE_DIR が既定に戻り、人が消すべきファイルの場所が変わる）
@@ -45,6 +50,7 @@ tests/run_check_levels.sh	tools/check_levels.tsv	s/^(run_stop_hook.sh\tALWAYS_PA
 tests/run_harness_contract.sh	settings.json.example	s|\$\{CLAUDE_PROJECT_DIR\}/hooks/deny_mutations.sh|$HOME/x/hooks/deny_mutations.sh|	フックの command に $HOME の fallback を戻す
 tests/run_harness_contract.sh	hooks/unfinished_action.py	s/^    sys.stdout.write\(json.dumps\(\{"decision": "block", "reason": reason\},/    sys.stdout.write("{}\\n"); sys.stdout.write(json.dumps({"decision": "block", "reason": reason},/	Stop フックが JSON を2行出す（契約違反の再現）
 tests/run_harness_contract.sh	hooks/deny_mutations.sh	s/^  exit 2$/  exit 0/	止めるときの exit 2 を 0 にする（理由だけ出して通す）
+tests/run_harness_contract.sh	tests/run_harness_contract.sh	/^export HARNESS_CONF=/d	スイートの conf 固定行を消す（Stop フックが結果ファイルを別の場所に探し、黙るべきときに喋る）
 tests/run_pii_check.sh	tools/pii_check.sh	s|^if \[ "\$hits" -gt 0 \]; then exit 1; fi|if [ "$hits" -gt 99999 ]; then exit 1; fi|	PII が見つかっても赤にしない（fail-open）
 tests/run_pii_check.sh	tools/pii_check.sh	s/s\/<\[\^<>@\]\*>\/\/g/s|<[^<>]*>||g/	名義形 名前 <実メール> を再び見逃す
 tests/run_audit_credentials.sh	tools/audit_credentials.sh	s/in 00\) ;; \*\) echo/in *) ;; 99) echo/	他人から読めるファイルを1件も報告しない（fail-open）

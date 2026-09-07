@@ -8,12 +8,17 @@
 #   **過検知の検体を必ず含める。** 誤って鳴ると、止まってよい場面で止まれなくなる。
 #
 # 状態はキットの state/ に触れず、一時ディレクトリを CLAUDE_PROJECT_DIR として渡す（結果ファイルはそこに置く）。
+# 設定は一時ディレクトリの harness.conf を HARNESS_CONF で固定する（run_hooks.sh と同じ型）。
+#   固定しないと、呼び出し元の環境変数 HARNESS_CONF（別の STATE_DIR）を拾って結果ファイルの場所がずれ、
+#   フックの欠陥ではなく環境の都合で赤になる。STATE_DIR は既定（state）と違う名前にして、設定が読まれていること自体も検査する。
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$HERE/../hooks/unfinished_action.py"
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-FAKE="$TMP/root"; mkdir -p "$FAKE/state" "$FAKE/hooks"
-RES="$FAKE/state/last_verify_result"
+FAKE="$TMP/root"; mkdir -p "$FAKE/st" "$FAKE/hooks"
+printf 'STATE_DIR="st"\nVERIFY_WATCH_DIRS="hooks tools tests .claude"\n' > "$TMP/harness.conf"
+export HARNESS_CONF="$TMP/harness.conf"
+RES="$FAKE/st/last_verify_result"
 export CLAUDE_PROJECT_DIR="$FAKE"
 pass=0; fail=0
 
@@ -119,8 +124,8 @@ bgrun -     '{"background_tasks":[{"id":"a"},{"id":"b"}]}'  "背景タスク複�
 bgrun -     '{"session_crons":[{"id":"c1"}]}'               "cron 生存 → 差し戻さない"
 bgrun block '{"background_tasks":[]}'                       "空配列は待機ではない → 差し戻す"
 
-# F. ログは偽ルートの state/ に書かれる（キットの state/ を汚さない・記録が測れる形である）
-if [ -f "$FAKE/state/unfinished_action.log" ] && awk -F'\t' 'NF<5{bad=1} END{exit bad}' "$FAKE/state/unfinished_action.log"; then
+# F. ログは偽ルートの STATE_DIR（harness.conf の st/）に書かれる（キットの state/ を汚さない・記録が測れる形である）
+if [ -f "$FAKE/st/unfinished_action.log" ] && awk -F'\t' 'NF<5{bad=1} END{exit bad}' "$FAKE/st/unfinished_action.log"; then
   pass=$((pass+1))
 else fail=$((fail+1)); echo "  NG ログが STATE_DIR に5列で書かれていない"; fi
 

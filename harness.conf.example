@@ -1,9 +1,11 @@
-# harness.conf — harness-kit の設定。各スクリプトが bash で source する（値は引用符で囲む）。
+# harness.conf.example — harness-kit の設定の雛形。`cp harness.conf.example harness.conf` して編集する。
+# harness.conf 本体は追跡しない（.gitignore）。各スクリプトが bash で source する（値は引用符で囲む）。
 # 置き場所: キットの直下。環境変数 HARNESS_CONF で別の場所を指せる。
+# harness.conf が無いときの挙動は fail-closed（読み取り専用の役の Bash と、名義を上書きするコミットは止まる）。
 
-# 読み取り専用の役名（agent_type）。空白区切り。
+# 読み取り専用の役名（agent_type）。空白区切り。下の5つは例で、自分の役名に置き換える。
 # deny_mutations.sh はこの役の Bash だけを検査する。空にすると検査対象が無くなる（=門が無い）。
-READONLY_AGENTS="chosa kansa kensho hisho eigyo"
+READONLY_AGENTS="chosa kansa kensho hisho eigyo"   # 例
 
 # コミット名義の期待値。check_git_identity.sh と .githooks/pre-commit が読む。
 # 未設定のまま名義の上書き（-c user.email= 等）を含むコミットを打つと、判定できないので止まる。

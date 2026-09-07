@@ -41,9 +41,15 @@ fingerprint() {  # 値を受け取り、8桁の指紋だけを返す（値は返
 selftest() {
   local tmp out rc=0
   tmp=$(mktemp -d) || { echo "❌ SELFTEST: 一時領域を作れない"; return 1; }
-  # 実在しないダミー。GitHub の形式に一致するが失効も何もしない文字列
-  printf 'export GITHUB_TOKEN=ghp_%s\n' "0000000000000000000000000000000000ab" > "$tmp/.bashrc_fixture"
-  printf 'AKIA0000000000000000\n' >> "$tmp/.bashrc_fixture"
+  # 実在しないダミー。形式には一致するが失効も何もしない文字列。
+  # ⚠ 接頭辞＋本体の並びをこのファイルに**書かない**（リポジトリを公開すると secret scanning が反応しうる）。
+  #   実行時に文字列連結で組み立てる。
+  local gh_pfx aws_pfx zeros
+  gh_pfx="gh"; gh_pfx="${gh_pfx}p_"
+  aws_pfx="AK"; aws_pfx="${aws_pfx}IA"
+  zeros=$(printf '0%.0s' $(seq 1 34))
+  printf 'export GITHUB_TOKEN=%s%sab\n' "$gh_pfx" "$zeros" > "$tmp/.bashrc_fixture"
+  printf '%s%s\n' "$aws_pfx" "${zeros:0:16}" >> "$tmp/.bashrc_fixture"
 
   out=$(scan_files "$tmp" 2>&1)
   # ① 出力にPAT本体（20文字以上の連なり）が1つも無いこと

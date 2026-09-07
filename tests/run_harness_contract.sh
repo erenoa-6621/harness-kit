@@ -20,6 +20,11 @@ pass=0; fail=0
 ng(){ echo "  🔴 $1"; fail=$((fail+1)); }
 okk(){ echo "  🟢 $1"; pass=$((pass+1)); }
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# 設定は一時ディレクトリの harness.conf を HARNESS_CONF で固定する（run_hooks.sh と同じ型）。
+#   呼び出し元の環境変数 HARNESS_CONF（別の STATE_DIR）を拾うと、Stop フックが結果ファイルを別の場所に探して
+#   「黙るべきときに喋る」＝環境の都合で赤になる。STATE_DIR は既定と違う名前にして、設定が読まれていることも見る。
+printf 'STATE_DIR="st"\nREADONLY_AGENTS="kensho"\nGIT_NAME_EXPECTED="Some One"\nGIT_EMAIL_EXPECTED="someone@example.invalid"\n' > "$TMP/harness.conf"
+export HARNESS_CONF="$TMP/harness.conf"
 is_one_json(){ printf '%s' "$1" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if isinstance(d,dict) else 1)' 2>/dev/null; }
 
 echo "===== フック契約スイート ====="
@@ -63,8 +68,8 @@ done
 
 # ── 2. Stop フックの契約（状態に依存させない。偽ルートを作る）──
 HOOK="$ROOT/hooks/unfinished_action.py"
-FR="$TMP/root"; mkdir -p "$FR/state"
-printf 'epoch=%s\nred=0\nhead=x\n' "$(( $(date +%s) + 3600 ))" > "$FR/state/last_verify_result"
+FR="$TMP/root"; mkdir -p "$FR/st"
+printf 'epoch=%s\nred=0\nhead=x\n' "$(( $(date +%s) + 3600 ))" > "$FR/st/last_verify_result"
 stop_out() {  # $1=最終メッセージ
   MSG="$1" python3 -c '
 import json,os,sys

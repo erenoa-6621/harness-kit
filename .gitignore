@@ -1,3 +1,11 @@
 *.local
 state/
 __pycache__/
+# 設定の実体は追跡しない（雛形は harness.conf.example）
+harness.conf
+# 秘密
+.env
+.env.*
+secrets/
+*.pem
+*.key
