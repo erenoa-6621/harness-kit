@@ -164,4 +164,4 @@ MIT（`LICENSE`）。
 
 ## 問い合わせ
 
-（準備中）
+不具合や「この経路も通った」の報告は GitHub の Issue へ。作者の記事は https://zenn.dev/erenoa6622 にあります。
